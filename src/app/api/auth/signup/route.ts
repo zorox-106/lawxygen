@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { registerUserInDb, createSessionToken } from '@/lib/auth';
+import { z } from 'zod';
+
+const SignupSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+});
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, password } = await req.json();
+    const body = await req.json();
+    const parsed = SignupSchema.safeParse(body);
 
-    if (!name || !email || !password) {
-      return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0].message },
+        { status: 400 }
+      );
     }
 
-    const user = registerUserInDb(email, name, password);
+    const { name, email, password } = parsed.data;
+    const user = await registerUserInDb(email, name, password);
     const token = await createSessionToken(user);
     const response = NextResponse.json({ success: true, user });
 
@@ -23,6 +35,9 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Signup failed' }, { status: 400 });
+    return NextResponse.json(
+      { error: error.message || 'Signup failed' },
+      { status: 400 }
+    );
   }
 }

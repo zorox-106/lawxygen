@@ -1,11 +1,12 @@
 """
 Lawxygen Technical Assignment - Section 2
-Streaming RAG Endpoint with Citation Grounding
+Streaming RAG Endpoint with Citation Grounding & Zero-Result Protection
 """
 
 import asyncio
 import json
-from typing import AsyncGenerator, Dict, List, Optional
+import os
+from typing import AsyncGenerator, Dict, List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -17,10 +18,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Enable CORS for frontend integration
+# ✅ Fix: Configure CORS with explicit allowed origins instead of wildcard with credentials
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://lawxygen.vercel.app").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,10 +31,16 @@ app.add_middleware(
 
 
 class ResearchQueryRequest(BaseModel):
-    query: str = Field(..., example="What is the punishment for cheque bounce under Section 138 NI Act?")
+    # ✅ Fix: Input length constraints prevent unbounded queries
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        example="What is the punishment for cheque bounce under Section 138 NI Act?"
+    )
 
 
-# Mock Knowledge Base Chunks
+# Knowledge Base Chunks
 MOCK_DATABASE = [
     {
         "doc_id": "ni_act_138",
@@ -62,24 +71,20 @@ MOCK_DATABASE = [
 
 def retrieve(query: str) -> List[Dict]:
     """
-    Mock Retrieval Function.
-    Filters database based on keyword matching in the query.
-    Returns 3 fake results shaped like {"doc_id": str, "chunk_text": str, "score": float}
+    Retrieval Function with strict keyword matching.
+    Returns up to 3 results shaped like {"doc_id": str, "chunk_text": str, "score": float}
     Returns [] if no relevant chunks match the query.
     """
     query_lower = query.lower().strip()
-    
-    # Check for explicitly empty or irrelevant queries
-    if not query_lower or query_lower in ["hello", "hi", "test", "abc", "xyz", "weather today"]:
+    if not query_lower:
         return []
     
     matches = []
     for doc in MOCK_DATABASE:
-        score = 0.0
-        # Calculate naive relevance score based on keyword match
         matched_words = [kw for kw in doc["keywords"] if kw in query_lower]
         if matched_words:
-            score = round(0.65 + (len(matched_words) * 0.1), 2)
+            # Score based on keyword overlap
+            score = round(0.60 + (len(matched_words) * 0.12), 2)
             if score > 0.98:
                 score = 0.98
             matches.append({
@@ -90,17 +95,6 @@ def retrieve(query: str) -> List[Dict]:
     
     # Sort by relevance score descending
     matches.sort(key=lambda x: x["score"], reverse=True)
-    
-    # If no specific keyword matched, but query looks like legal question, return top default chunks
-    if not matches:
-        legal_terms = ["law", "penalty", "punishment", "section", "act", "court", "rights", "notice", "breach", "legal"]
-        if any(term in query_lower for term in legal_terms):
-            matches = [
-                {"doc_id": MOCK_DATABASE[0]["doc_id"], "chunk_text": MOCK_DATABASE[0]["chunk_text"], "score": 0.89},
-                {"doc_id": MOCK_DATABASE[1]["doc_id"], "chunk_text": MOCK_DATABASE[1]["chunk_text"], "score": 0.81},
-                {"doc_id": MOCK_DATABASE[3]["doc_id"], "chunk_text": MOCK_DATABASE[3]["chunk_text"], "score": 0.75},
-            ]
-            
     return matches[:3]
 
 
@@ -117,14 +111,12 @@ async def generate_rag_stream(query: str) -> AsyncGenerator[str, None]:
         zero_res_msg = "No relevant legal sources found for your query. The system cannot provide a grounded response without authoritative source documents."
         for word in zero_res_msg.split():
             yield f"{word} "
-            await asyncio.sleep(0.04)
+            await asyncio.sleep(0.03)
         yield "\n\n[SOURCES_USED]: " + json.dumps({"status": "no_sources_found", "used_chunks": []})
         return
 
     # 2. Token-by-Token Streaming with Inline Citation Grounding
     response_tokens = []
-    
-    # Synthesize answer text based on retrieved chunks
     response_tokens.append(f"Based on Indian statutory law and public legal records for your query regarding '{query}':\n\n")
     
     for idx, chunk in enumerate(chunks, 1):
@@ -133,14 +125,13 @@ async def generate_rag_stream(query: str) -> AsyncGenerator[str, None]:
         score = chunk['score']
         
         response_tokens.append(f"Point {idx}: According to legal record ")
-        response_tokens.append(f"[{doc_id}]")  # Inline citation marker
+        response_tokens.append(f"[{doc_id}]")
         response_tokens.append(f" (relevance score: {score}), ")
         response_tokens.append(f'"{text_snippet}" ')
         response_tokens.append(f"[{doc_id}]\n\n")
 
     response_tokens.append("Summary: All claims above are directly cited from retrieved statutory provisions.")
     
-    # Stream synthesized response token-by-token with artificial typing latency (0.03s)
     full_text = "".join(response_tokens)
     words = full_text.split(" ")
     
@@ -148,7 +139,7 @@ async def generate_rag_stream(query: str) -> AsyncGenerator[str, None]:
         yield word if i == len(words) - 1 else word + " "
         await asyncio.sleep(0.03)
 
-    # 3. Final JSON Grounding Block detailing exact source chunks used
+    # 3. Final JSON Grounding Block
     used_chunks_summary = {
         "status": "success",
         "query": query,
@@ -168,10 +159,6 @@ async def generate_rag_stream(query: str) -> AsyncGenerator[str, None]:
 
 @app.post("/research/query")
 async def research_query(payload: ResearchQueryRequest):
-    """
-    POST /research/query
-    Accepts natural-language legal query and returns SSE token-by-token stream.
-    """
     if not payload.query or not payload.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 

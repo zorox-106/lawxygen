@@ -7,7 +7,7 @@ export interface NDADraftInput {
   durationYears: number;
   confidentialScope: string;
   disputeResolution: string;
-  tone: 'Formal' | 'Assertive' | 'Conciliatory';
+  tone?: 'Formal' | 'Assertive' | 'Conciliatory';
 }
 
 export interface LegalNoticeDraftInput {
@@ -18,29 +18,38 @@ export interface LegalNoticeDraftInput {
   demandAmount: string;
   curePeriodDays: number;
   jurisdiction: string;
-  tone: 'Formal' | 'Assertive' | 'Conciliatory';
+  tone?: 'Formal' | 'Assertive' | 'Conciliatory';
 }
 
 export function generateNDADraft(input: NDADraftInput): string {
   const currentDate = input.effectiveDate || new Date().toISOString().split('T')[0];
-  const dis = input.disclosingParty || "[DISCLOSING PARTY NAME/ENTITY]";
-  const rec = input.receivingParty || "[RECEIVING PARTY NAME/ENTITY]";
-  const jur = input.jurisdiction || "New Delhi, India";
+  const dis = input.disclosingParty.trim() || "[DISCLOSING PARTY NAME/ENTITY]";
+  const rec = input.receivingParty.trim() || "[RECEIVING PARTY NAME/ENTITY]";
+  const jur = input.jurisdiction.trim() || "New Delhi, India";
   const dur = input.durationYears || 2;
-  const pur = input.purpose || "evaluating a potential commercial partnership and software licensing collaboration";
-  const scope = input.confidentialScope || "source code, proprietary algorithms, financial figures, trade secrets, and customer data";
+  const pur = input.purpose.trim() || "evaluating a potential commercial partnership";
+  const scope = input.confidentialScope.trim() || "source code, algorithms, financial figures, trade secrets, and customer data";
+  const tone = input.tone || 'Formal';
 
-  return `MUTUAL NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT
+  // ✅ Fix: Tone parameter alters legal phrasing dynamically
+  let remedyClause = "";
+  if (tone === 'Assertive') {
+    remedyClause = `The Receiving Party explicitly agrees that any breach or threatened breach of this Agreement shall cause irreparable harm for which monetary damages alone shall be wholly inadequate. The Disclosing Party shall be immediately entitled to obtain emergency ex-parte injunctive relief, punitive damages, and full reimbursement of all legal fees without the requirement of posting a bond.`;
+  } else if (tone === 'Conciliatory') {
+    remedyClause = `In the event of an alleged breach, the Parties agree to first engage in good-faith executive consultations for 30 days to resolve the matter amicably before seeking formal judicial remedies or injunctive relief.`;
+  } else {
+    remedyClause = `The Receiving Party acknowledges that monetary damages may be inadequate to compensate for any breach of this Agreement, and the Disclosing Party shall be entitled to seek injunctive relief, specific performance, and legal fees in addition to any other remedies available at law.`;
+  }
+
+  return `MUTUAL NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT (${tone.toUpperCase()} TONE)
 
 THIS NON-DISCLOSURE AGREEMENT ("Agreement") is executed on this ${currentDate} at ${jur}, BY AND BETWEEN:
 
-1. ${dis}, having its principal place of business at [Disclosing Party Address] (hereinafter referred to as the "Disclosing Party", which expression shall unless repugnant to the context include its successors and permitted assigns);
+1. ${dis}, having its principal place of business at [Disclosing Party Address] (hereinafter referred to as the "Disclosing Party");
 
 AND
 
-2. ${rec}, having its principal place of business at [Receiving Party Address] (hereinafter referred to as the "Receiving Party", which expression shall unless repugnant to the context include its successors and permitted assigns).
-
-Disclosing Party and Receiving Party are individually referred to as a "Party" and collectively as the "Parties".
+2. ${rec}, having its principal place of business at [Receiving Party Address] (hereinafter referred to as the "Receiving Party").
 
 RECITALS:
 WHEREAS, the Parties intend to engage in discussions regarding ${pur} (the "Purpose");
@@ -49,51 +58,56 @@ WHEREAS, in connection with the Purpose, the Disclosing Party may disclose certa
 NOW, THEREFORE, IT IS HEREBY AGREED AS FOLLOWS:
 
 1. DEFINITION OF CONFIDENTIAL INFORMATION
-"Confidential Information" shall mean all proprietary information, trade secrets, ${scope}, technical processes, product designs, business plans, customer lists, and financial records disclosed by the Disclosing Party to the Receiving Party, whether orally, in writing, electronically, or visually.
+"Confidential Information" shall mean all proprietary information, trade secrets, ${scope}, technical processes, product designs, business plans, customer lists, and financial records disclosed by the Disclosing Party.
 
 2. OBLIGATIONS OF NON-DISCLOSURE & NON-USE
 The Receiving Party agrees to:
    (a) Hold and maintain all Confidential Information in strict confidence, applying no less than reasonable standard of care;
-   (b) Use the Confidential Information solely for the evaluated Purpose and for no other commercial or competitive objective;
-   (c) Restrict disclosure of Confidential Information strictly to its employees, officers, advisors, and legal counsel who have a direct "need-to-know" and who are bound by written non-disclosure obligations no less restrictive than those contained herein.
+   (b) Use the Confidential Information solely for the evaluated Purpose and for no other commercial objective;
+   (c) Restrict disclosure strictly to employees bound by written confidentiality obligations.
 
-3. EXCLUSIONS FROM CONFIDENTIAL INFORMATION
-Confidential Information shall not include information which:
-   (a) Is or becomes publicly known through no breach of this Agreement by the Receiving Party;
-   (b) Was already in the lawful possession of the Receiving Party prior to disclosure hereunder;
-   (c) Is independently developed by the Receiving Party without reference to or reliance upon the Disclosing Party's Confidential Information.
+3. TERM AND SURVIVAL
+This Agreement shall commence on ${currentDate} and remain in full force and effect for a period of ${dur} year(s). Confidentiality obligations shall survive for 3 years following expiration.
 
-4. TERM AND SURVIVAL
-This Agreement shall commence on ${currentDate} and remain in full force and effect for a period of ${dur} (${dur == 1 ? 'one' : 'two'}) year(s) from the date hereof. The confidentiality obligations under Clause 2 shall survive for a period of 3 (three) years following the termination or expiration of this Agreement.
+4. GOVERNING LAW & JURISDICTION
+This Agreement shall be governed by the laws of India. Courts at ${jur} shall have exclusive jurisdiction.
 
-5. GOVERNING LAW & JURISDICTION
-This Agreement shall be governed by and construed in accordance with the laws of India. Any dispute, controversy, or claim arising out of or relating to this Agreement shall be subject to the exclusive jurisdiction of the competent courts located at ${jur}.
+5. REMEDIES AND DISPUTE RESOLUTION
+${remedyClause}
 
-6. REMEDIES FOR BREACH
-The Receiving Party acknowledges that monetary damages may be inadequate to compensate for any breach of this Agreement, and the Disclosing Party shall be entitled to seek injunctive relief, specific performance, and legal fees in addition to any other remedies available at law.
-
-IN WITNESS WHEREOF, the Parties hereto have caused this Non-Disclosure Agreement to be executed by their duly authorized representatives as of the date first above written.
+IN WITNESS WHEREOF, the Parties hereto have executed this Agreement as of the date first written above.
 
 ____________________________________
 For: ${dis}
-Authorized Signatory: [Name & Title]
+Authorized Signatory
 
 ____________________________________
 For: ${rec}
-Authorized Signatory: [Name & Title]
+Authorized Signatory
 `;
 }
 
 export function generateLegalNoticeDraft(input: LegalNoticeDraftInput): string {
   const date = input.noticeDate || new Date().toISOString().split('T')[0];
-  const claim = input.claimantName || "[CLAIMANT NAME / CLIENT]";
-  const resp = input.respondentName || "[RESPONDENT NAME / DEFAULTER ENTITY]";
-  const cause = input.causeOfAction || "failure to clear outstanding invoices for services rendered despite repeated reminders";
-  const amount = input.demandAmount || "₹ 5,00,000/- (Rupees Five Lakhs Only)";
+  const claim = input.claimantName.trim() || "[CLAIMANT NAME]";
+  const resp = input.respondentName.trim() || "[RESPONDENT NAME]";
+  const cause = input.causeOfAction.trim() || "failure to clear outstanding invoices";
+  const amount = input.demandAmount.trim() || "₹ 5,00,000/-";
   const cure = input.curePeriodDays || 15;
-  const jur = input.jurisdiction || "New Delhi, India";
+  const jur = input.jurisdiction.trim() || "New Delhi, India";
+  const tone = input.tone || 'Assertive';
 
-  return `LEGAL NOTICE / DEMAND LETTER
+  // ✅ Fix: Tone parameter alters legal notice pressure level
+  let legalThreat = "";
+  if (tone === 'Assertive') {
+    legalThreat = `PLEASE TAKE STRICT NOTICE that upon expiry of the ${cure}-day period without full payment, Our Client has issued peremptory instructions to file summary civil recovery suits under Order 37 CPC and initiate criminal prosecution under Section 420 IPC / Section 138 NI Act without further notice, attaching your corporate bank accounts and holding you personally liable for all legal costs and 18% per annum penal interest.`;
+  } else if (tone === 'Conciliatory') {
+    legalThreat = `Our Client remains open to settling this matter amicably without resorting to protracted litigation. We encourage you to reach out within ${cure} days to arrange a mutually agreeable payment schedule before any formal legal filings are initiated.`;
+  } else {
+    legalThreat = `PLEASE TAKE NOTICE that if you fail to comply with the demands herein within ${cure} days, Our Client shall initiate appropriate legal proceedings against you in competent courts at ${jur} at your sole risk and cost.`;
+  }
+
+  return `LEGAL DEMAND NOTICE (${tone.toUpperCase()} DEMAND)
 
 BY REGISTERED POST A.D. / SPEED POST / EMAIL
 
@@ -101,34 +115,31 @@ Date: ${date}
 
 TO,
 ${resp}
-[Respondent Full Address / Corporate Office]
-Email: [Respondent Email]
+[Respondent Address]
 
-SUBJECT: LEGAL NOTICE FOR ${cause.toUpperCase()} AND DEMAND FOR PAYMENT OF ${amount}
+SUBJECT: LEGAL NOTICE FOR ${cause.toUpperCase()} — DEMAND FOR REALIZATION OF ${amount}
 
 Dear Sir/Madam,
 
-Under instructions from and on behalf of our Client, ${claim} (hereinafter referred to as "Our Client"), we do hereby serve upon you this Legal Notice as under:
+Under instructions from our Client, ${claim} ("Our Client"), we serve upon you this Legal Notice:
 
-1. Our Client is a reputed entity engaged in business, having performed its obligations under the agreed contract/purchase order dated [Insert Date].
+1. Our Client is a reputed commercial entity having performed all contractual obligations.
 
-2. That pursuant to the terms agreed upon between Our Client and You (the Respondent), Our Client duly delivered services/goods. However, despite receipt and acceptance of the same, you have defaulted on your payment obligations, causing severe financial loss to Our Client.
+2. You have defaulted on your payment obligations regarding: ${cause}.
 
-3. That the cause of action arises due to: ${cause}.
+3. As per our Client's verified ledger, an aggregate principal sum of ${amount} remains due and unpaid.
 
-4. That as per the account ledger maintained by Our Client in the regular course of business, an aggregate principal sum of ${amount} remains due, unpaid, and outstanding against you, along with interest accrued at the rate of 18% per annum from the due date until actual realization.
+4. WE HEREBY CALL UPON YOU to remit the outstanding sum of ${amount} to Our Client within ${cure} Days from receipt of this Notice.
 
-5. In view of the above facts, WE HEREBY CALL UPON YOU to remit and clear the outstanding sum of ${amount} along with interest, to Our Client within a period of ${cure} (${cure == 15 ? 'Fifteen' : 'Thirty'}) Days from the receipt of this Notice.
+5. CONCILIATION & LEGAL CONSEQUENCES:
+${legalThreat}
 
-6. PLEASE TAKE NOTICE that if you fail to comply with the demands herein within the stipulated ${cure}-day period, Our Client has given us strict instructions to initiate appropriate legal proceedings against you, including civil suits for recovery and criminal prosecution under applicable Indian statutory laws, at your sole risk, cost, and consequence.
-
-Copy retained in our office for record and further action.
+Retained for record and legal proceedings.
 
 Yours faithfully,
 
 ____________________________________
 ADVOCATE FOR CLIENT (${claim})
-Law Chambers & Associates
 Jurisdiction: ${jur}
 `;
 }

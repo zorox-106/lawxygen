@@ -132,7 +132,7 @@ export function searchLegalCorpus(query: string, categoryFilter?: string): { res
     let score = 0;
     const fullText = `${doc.title} ${doc.source} ${doc.content} ${doc.keywords.join(' ')}`.toLowerCase();
 
-    // Title / Section exact match bonus
+    // Exact title / section match bonus
     if (fullText.includes(normalizedQuery)) score += 0.5;
 
     queryWords.forEach(word => {
@@ -141,7 +141,6 @@ export function searchLegalCorpus(query: string, categoryFilter?: string): { res
       if (doc.content.toLowerCase().includes(word)) score += 0.10;
     });
 
-    // Extract highlight snippet
     let highlightSnippet = doc.summary;
     const firstWordMatch = queryWords.find(w => doc.content.toLowerCase().includes(w));
     if (firstWordMatch) {
@@ -154,19 +153,23 @@ export function searchLegalCorpus(query: string, categoryFilter?: string): { res
     return { doc, score: Number(score.toFixed(2)), highlightSnippet };
   });
 
+  // Strict relevance threshold filter (must have score > 0.15)
   const filteredResults = scored
     .filter(item => item.score > 0.15)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
 
-  // If no direct keyword score matched, return top 2 as general legal context
-  const finalResults = filteredResults.length > 0 ? filteredResults.slice(0, 4) : [
-    { doc: INDIAN_LEGAL_CORPUS[0], score: 0.45, highlightSnippet: INDIAN_LEGAL_CORPUS[0].summary },
-    { doc: INDIAN_LEGAL_CORPUS[1], score: 0.38, highlightSnippet: INDIAN_LEGAL_CORPUS[1].summary },
-  ];
+  // ✅ Fix: Do NOT return random default documents when no query matches!
+  if (filteredResults.length === 0) {
+    return {
+      results: [],
+      citedSummary: `No matching legal statutes or Supreme Court precedents found in the indexed corpus for query '${query}'.`
+    };
+  }
 
-  // Synthesize cited summary
-  const citations = finalResults.map((r, i) => `[${i + 1}] ${r.doc.source} (${r.doc.sectionOrCaseNo})`).join("; ");
-  const citedSummary = `Based on retrieved Indian legal statutes and precedents: Query '${query}' relates to ${finalResults[0].doc.title} [1]. The provisions dictate that ${finalResults[0].doc.summary} Grounded sources: ${citations}.`;
+  // Synthesize cited summary grounded only in matching results
+  const citations = filteredResults.map((r, i) => `[${i + 1}] ${r.doc.source} (${r.doc.sectionOrCaseNo})`).join("; ");
+  const citedSummary = `Based on retrieved Indian legal statutes and precedents: Query '${query}' relates to ${filteredResults[0].doc.title} [1]. ${filteredResults[0].doc.summary} Grounded sources: ${citations}.`;
 
-  return { results: finalResults, citedSummary };
+  return { results: filteredResults, citedSummary };
 }

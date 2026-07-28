@@ -1,9 +1,18 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import bcrypt from 'bcryptjs';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'lawxygen_secret_jwt_key_2026_super_secure_auth_token'
-);
+// ✅ Fix: No hardcoded fallback — throw at startup if JWT_SECRET is missing
+const jwtSecretValue = process.env.JWT_SECRET;
+if (!jwtSecretValue) {
+  throw new Error(
+    'JWT_SECRET environment variable is not set. ' +
+    'Copy .env.example to .env.local and set a strong secret.'
+  );
+}
+const JWT_SECRET = new TextEncoder().encode(jwtSecretValue);
+
+const BCRYPT_ROUNDS = 12;
 
 export interface UserSession {
   id: string;
@@ -12,18 +21,35 @@ export interface UserSession {
   role: string;
 }
 
-// In-memory mock database of registered users with default demo user
-const USERS_DB: Record<string, { id: string; name: string; passwordHash: string; role: string }> = {
-  'advocate@lawxygen.com': {
+interface StoredUser {
+  id: string;
+  name: string;
+  passwordHash: string;
+  role: string;
+}
+
+// In-memory store (acceptable for demo; production would use a database)
+const USERS_DB: Record<string, StoredUser> = {};
+
+// ✅ Fix: Hash the demo password at module load time so it is never stored plaintext
+(async () => {
+  USERS_DB['advocate@lawxygen.com'] = {
     id: 'usr_demo_01',
     name: 'Adv. Rajesh Sharma',
-    passwordHash: 'Lawyer@123', // In real app hashed with bcrypt
-    role: 'Senior Advocate'
-  }
-};
+    passwordHash: await bcrypt.hash('Lawyer@123', BCRYPT_ROUNDS),
+    role: 'Senior Advocate',
+  };
+})();
+
+// ─── Token helpers ────────────────────────────────────────────────────────────
 
 export async function createSessionToken(user: UserSession): Promise<string> {
-  return new SignJWT({ ...user })
+  return new SignJWT({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+  })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('24h')
@@ -39,7 +65,8 @@ export async function verifySessionToken(token: string): Promise<UserSession | n
       name: payload.name as string,
       role: payload.role as string,
     };
-  } catch (error) {
+  } catch {
+    // Token expired, malformed, or signature invalid — return null silently
     return null;
   }
 }
@@ -48,36 +75,46 @@ export async function getAuthenticatedUser(): Promise<UserSession | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get('lawxygen_session')?.value;
   if (!token) return null;
-  return await verifySessionToken(token);
+  return verifySessionToken(token);
 }
 
-export function registerUserInDb(email: string, name: string, passwordHash: string): UserSession {
-  const normalizedEmail = email.toLowerCase().trim();
-  if (USERS_DB[normalizedEmail]) {
-    throw new Error('User already exists with this email');
-  }
-  
-  const id = `usr_${Date.now()}`;
-  USERS_DB[normalizedEmail] = {
-    id,
-    name,
-    passwordHash,
-    role: 'Advocate'
-  };
+// ─── User store helpers ───────────────────────────────────────────────────────
 
+export async function registerUserInDb(
+  email: string,
+  name: string,
+  plainPassword: string
+): Promise<UserSession> {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  if (USERS_DB[normalizedEmail]) {
+    throw new Error('An account with this email already exists.');
+  }
+
+  const id = `usr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  // ✅ Fix: Always hash passwords with bcrypt before storing
+  const passwordHash = await bcrypt.hash(plainPassword, BCRYPT_ROUNDS);
+
+  USERS_DB[normalizedEmail] = { id, name, passwordHash, role: 'Advocate' };
   return { id, email: normalizedEmail, name, role: 'Advocate' };
 }
 
-export function authenticateUserInDb(email: string, password: string): UserSession | null {
+export async function authenticateUserInDb(
+  email: string,
+  plainPassword: string
+): Promise<UserSession | null> {
   const normalizedEmail = email.toLowerCase().trim();
   const user = USERS_DB[normalizedEmail];
-  if (!user || user.passwordHash !== password) {
+
+  // ✅ Fix: Use bcrypt.compare — constant-time comparison, no plaintext
+  if (!user || !(await bcrypt.compare(plainPassword, user.passwordHash))) {
     return null;
   }
+
   return {
     id: user.id,
     email: normalizedEmail,
     name: user.name,
-    role: user.role
+    role: user.role,
   };
 }

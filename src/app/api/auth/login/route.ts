@@ -1,33 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateUserInDb, createSessionToken } from '@/lib/auth';
+import { z } from 'zod';
+
+const LoginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json();
+    const body = await req.json();
+    const parsed = LoginSchema.safeParse(body);
 
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0].message },
+        { status: 400 }
+      );
     }
 
-    const user = authenticateUserInDb(email, password);
+    const { email, password } = parsed.data;
+    const user = await authenticateUserInDb(email, password);
+
     if (!user) {
-      return NextResponse.json({ error: 'Invalid credentials. Use Advocate demo email.' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Invalid email or password.' },
+        { status: 401 }
+      );
     }
 
     const token = await createSessionToken(user);
     const response = NextResponse.json({ success: true, user });
 
-    // Set HTTP-Only Cookie
     response.cookies.set('lawxygen_session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24, // 1 day
+      maxAge: 60 * 60 * 24,
       path: '/',
     });
 
     return response;
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Internal error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Authentication error' },
+      { status: 500 }
+    );
   }
 }
