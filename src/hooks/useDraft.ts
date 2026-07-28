@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import jsPDF from 'jspdf';
 import { NDADraftInput, LegalNoticeDraftInput } from '@/lib/drafter';
+import { ExecutionMetadata } from '@/lib/openai';
 
 export function useDraft() {
   const [docType, setDocType] = useState<'NDA' | 'LEGAL_NOTICE'>('NDA');
@@ -8,7 +9,7 @@ export function useDraft() {
   const [generatedDraft, setGeneratedDraft] = useState<string>('');
   const [copiedDraft, setCopiedDraft] = useState(false);
   const [draftError, setDraftError] = useState<string>('');
-  const [provider, setProvider] = useState<'openai' | 'template' | null>(null);
+  const [metadata, setMetadata] = useState<ExecutionMetadata | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [ndaForm, setNdaForm] = useState<NDADraftInput>({
@@ -53,8 +54,8 @@ export function useDraft() {
       if (!res.ok) throw new Error(data.error || 'Draft generation failed');
       if (data.draftContent) {
         setGeneratedDraft(data.draftContent);
-        setProvider(data.provider || 'template');
-        triggerToast(`Legal document generated successfully via ${data.provider === 'openai' ? 'OpenAI GPT-4o-mini' : 'Legal Template Engine'}`);
+        setMetadata(data.metadata || null);
+        triggerToast(`Draft generated via ${data.metadata?.provider === 'openai' ? data.metadata.model : 'Rule Engine'}`);
       }
     } catch (err: any) {
       setDraftError(err.message || 'Error generating document draft');
@@ -115,7 +116,7 @@ export function useDraft() {
     setGeneratedDraft,
     copiedDraft,
     draftError,
-    provider,
+    metadata,
     toastMessage,
     handleGenerateDraft,
     handleExportPDF,

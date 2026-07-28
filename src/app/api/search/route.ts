@@ -31,29 +31,33 @@ export async function POST(req: NextRequest) {
 
     const { query, category } = parsed.data;
     const { results } = searchLegalCorpus(query, category);
+    const timestamp = new Date().toISOString();
 
-    // If zero matching chunks, return immediate zero-sources response
     if (results.length === 0) {
       return NextResponse.json({
         success: true,
         query,
         count: 0,
         citedSummary: "No relevant legal sources were found.",
-        provider: 'rule-engine',
+        metadata: {
+          provider: 'template',
+          model: 'zero-results-fallback',
+          generatedAt: timestamp,
+          grounded: false,
+        },
         results: [],
       });
     }
 
-    // Pass retrieved documents to OpenAI for grounded RAG synthesis
     const docs = results.map(r => r.doc);
-    const { summary, provider } = await generateOpenAIRAGSynthesis(query, docs);
+    const { summary, metadata } = await generateOpenAIRAGSynthesis(query, docs);
 
     return NextResponse.json({
       success: true,
       query,
       count: results.length,
       citedSummary: summary,
-      provider,
+      metadata,
       results,
     });
   } catch (error: any) {

@@ -30,15 +30,14 @@ export async function POST(req: NextRequest) {
 
     const { docType, inputs } = parsed.data;
 
-    // Call OpenAI generator with automatic timeout and template fallback
-    const { content, provider } = await generateOpenAILegalDraft(docType, inputs as any);
+    // Call OpenAI generator returning draft text and structured metadata
+    const { content, metadata } = await generateOpenAILegalDraft(docType, inputs as any);
 
     return NextResponse.json({
       success: true,
       docType,
       draftContent: content,
-      provider,
-      generatedAt: new Date().toISOString(),
+      metadata,
     });
   } catch (error: any) {
     return NextResponse.json(

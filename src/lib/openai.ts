@@ -2,6 +2,13 @@ import OpenAI from 'openai';
 import { NDADraftInput, LegalNoticeDraftInput, generateNDADraft, generateLegalNoticeDraft } from './drafter';
 import { LegalDocument } from './corpus';
 
+export interface ExecutionMetadata {
+  provider: 'openai' | 'template';
+  model: string;
+  generatedAt: string;
+  grounded: boolean;
+}
+
 let openaiClient: OpenAI | null = null;
 
 export function getOpenAIClient(): OpenAI | null {
@@ -13,7 +20,7 @@ export function getOpenAIClient(): OpenAI | null {
   if (!openaiClient) {
     openaiClient = new OpenAI({
       apiKey: apiKey.trim(),
-      timeout: 8000, // 8s — safely under Vercel's 10s default, 30s with vercel.json extended timeout
+      timeout: 8000, // 8s timeout for serverless functions
       maxRetries: 1,
     });
   }
@@ -27,23 +34,32 @@ export function isOpenAiConfigured(): boolean {
 
 /**
  * Generates structured legal draft using OpenAI GPT with system prompt enforcement.
- * Fallbacks seamlessly to legal template engine if OPENAI_API_KEY is unconfigured or errors.
+ * Returns structured metadata object for debugging and observability.
  */
 export async function generateOpenAILegalDraft(
   docType: 'NDA' | 'LEGAL_NOTICE',
   inputs: NDADraftInput | LegalNoticeDraftInput
-): Promise<{ content: string; provider: 'openai' | 'template' }> {
+): Promise<{ content: string; metadata: ExecutionMetadata }> {
   const client = getOpenAIClient();
+  const timestamp = new Date().toISOString();
 
   if (!client) {
-    // Graceful fallback to legal drafting engine when OpenAI key is absent
     const templateDraft = docType === 'NDA'
       ? generateNDADraft(inputs as NDADraftInput)
       : generateLegalNoticeDraft(inputs as LegalNoticeDraftInput);
-    return { content: templateDraft, provider: 'template' };
+    return {
+      content: templateDraft,
+      metadata: {
+        provider: 'template',
+        model: 'rule-based-drafter-v1',
+        generatedAt: timestamp,
+        grounded: true,
+      },
+    };
   }
 
   const tone = inputs.tone || 'Formal';
+  const selectedModel = 'gpt-4o-mini';
 
   const systemPrompt = `You are a Senior Indian Legal Counsel specializing in contract drafting and statutory notices under Indian Law.
 OBJECTIVE: Draft a highly professional, court-ready ${docType === 'NDA' ? 'Non-Disclosure Agreement (NDA)' : 'Legal Demand Notice'} in Markdown format.
@@ -76,12 +92,12 @@ STRICT DRAFTING RULES:
 
   try {
     const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: selectedModel,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.2, // Low temperature for consistent legal structure
+      temperature: 0.2,
       max_tokens: 1500,
     });
 
@@ -90,47 +106,83 @@ STRICT DRAFTING RULES:
       throw new Error('Empty response from OpenAI');
     }
 
-    return { content: draftText, provider: 'openai' };
+    return {
+      content: draftText,
+      metadata: {
+        provider: 'openai',
+        model: selectedModel,
+        generatedAt: timestamp,
+        grounded: true,
+      },
+    };
   } catch (error: any) {
     console.warn('OpenAI drafting failed or timed out. Falling back to template generator:', error.message);
     const templateDraft = docType === 'NDA'
       ? generateNDADraft(inputs as NDADraftInput)
       : generateLegalNoticeDraft(inputs as LegalNoticeDraftInput);
-    return { content: templateDraft, provider: 'template' };
+
+    return {
+      content: templateDraft,
+      metadata: {
+        provider: 'template',
+        model: 'rule-based-drafter-v1',
+        generatedAt: timestamp,
+        grounded: true,
+      },
+    };
   }
 }
 
 /**
  * Generates grounded RAG legal synthesis using OpenAI GPT over retrieved context chunks.
- * Enforces strict zero-hallucination rules.
+ * Returns structured metadata object for observability.
  */
 export async function generateOpenAIRAGSynthesis(
   query: string,
   retrievedDocs: LegalDocument[]
-): Promise<{ summary: string; provider: 'openai' | 'template' }> {
+): Promise<{ summary: string; metadata: ExecutionMetadata }> {
+  const timestamp = new Date().toISOString();
+
   if (!retrievedDocs || retrievedDocs.length === 0) {
-    return { summary: "No relevant legal sources were found.", provider: 'template' };
+    return {
+      summary: "No relevant legal sources were found.",
+      metadata: {
+        provider: 'template',
+        model: 'zero-results-fallback',
+        generatedAt: timestamp,
+        grounded: false,
+      },
+    };
   }
 
   const client = getOpenAIClient();
 
   if (!client) {
-    // Standard template synthesis fallback
     const citations = retrievedDocs.map((r, i) => `[${i + 1}] ${r.source} (${r.sectionOrCaseNo})`).join("; ");
     const summary = `Based on retrieved Indian legal statutes and precedents: Query '${query}' relates to ${retrievedDocs[0].title} [1]. ${retrievedDocs[0].summary} Grounded sources: ${citations}.`;
-    return { summary, provider: 'template' };
+    return {
+      summary,
+      metadata: {
+        provider: 'template',
+        model: 'rule-based-synthesis-v1',
+        generatedAt: timestamp,
+        grounded: true,
+      },
+    };
   }
 
   const contextText = retrievedDocs
     .map((doc, idx) => `SOURCE [${idx + 1}] (${doc.source} - ${doc.sectionOrCaseNo}):\nTitle: ${doc.title}\nContent: ${doc.content}\nSummary: ${doc.summary}`)
     .join('\n\n');
 
+  const selectedModel = 'gpt-4o-mini';
+
   const systemPrompt = `You are an expert Indian Statutory Legal Researcher.
 OBJECTIVE: Answer the user's legal query based ONLY on the provided legal context sources.
 
 STRICT RAG RULES:
 1. Grounding: Rely EXCLUSIVELY on the provided source texts below. Do NOT use outside general legal knowledge.
-2. Citation Requirement: Invert inline citations like [1], [2] next to every statutory claim or penalty mentioned.
+2. Citation Requirement: Include inline citations like [1], [2] next to every statutory claim or penalty mentioned.
 3. Refusal Rule: If the provided sources do NOT contain enough information to answer the query, respond ONLY with: "No relevant legal sources were found."
 4. Conciseness: Provide a precise 2-3 sentence legal answer summarizing statutory consequences and citations.`;
 
@@ -141,25 +193,49 @@ ${contextText}`;
 
   try {
     const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: selectedModel,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.1, // Minimal temperature to prevent hallucination
+      temperature: 0.1,
       max_tokens: 400,
     });
 
     const summaryText = response.choices[0]?.message?.content?.trim();
     if (!summaryText || summaryText.includes("No relevant legal sources were found")) {
-      return { summary: "No relevant legal sources were found.", provider: 'openai' };
+      return {
+        summary: "No relevant legal sources were found.",
+        metadata: {
+          provider: 'openai',
+          model: selectedModel,
+          generatedAt: timestamp,
+          grounded: false,
+        },
+      };
     }
 
-    return { summary: summaryText, provider: 'openai' };
+    return {
+      summary: summaryText,
+      metadata: {
+        provider: 'openai',
+        model: selectedModel,
+        generatedAt: timestamp,
+        grounded: true,
+      },
+    };
   } catch (error: any) {
     console.warn('OpenAI RAG synthesis failed. Falling back to template synthesis:', error.message);
     const citations = retrievedDocs.map((r, i) => `[${i + 1}] ${r.source} (${r.sectionOrCaseNo})`).join("; ");
     const summary = `Based on retrieved Indian legal statutes and precedents: Query '${query}' relates to ${retrievedDocs[0].title} [1]. ${retrievedDocs[0].summary} Grounded sources: ${citations}.`;
-    return { summary, provider: 'template' };
+    return {
+      summary,
+      metadata: {
+        provider: 'template',
+        model: 'rule-based-synthesis-v1',
+        generatedAt: timestamp,
+        grounded: true,
+      },
+    };
   }
 }

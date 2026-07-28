@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Sliders, RefreshCw, Sparkles, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
+import { FileText, Sliders, RefreshCw, Sparkles, AlertCircle, CheckCircle, RotateCcw, Cpu } from 'lucide-react';
 import { NdaForm } from './NdaForm';
 import { NoticeForm } from './NoticeForm';
 import { DraftPreview } from './DraftPreview';
@@ -24,7 +24,7 @@ export const DraftingModule: React.FC<DraftingModuleProps> = ({ user, onQuickLog
     setGeneratedDraft,
     copiedDraft,
     draftError,
-    provider,
+    metadata,
     toastMessage,
     handleGenerateDraft,
     handleExportPDF,
@@ -41,7 +41,6 @@ export const DraftingModule: React.FC<DraftingModuleProps> = ({ user, onQuickLog
 
   return (
     <div className="space-y-6 relative">
-      {/* Toast Notification Popup */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-slate-900 border border-emerald-500/40 text-emerald-300 text-xs shadow-2xl flex items-center space-x-2 animate-bounce">
           <CheckCircle className="h-4 w-4 text-emerald-400" />
@@ -51,22 +50,28 @@ export const DraftingModule: React.FC<DraftingModuleProps> = ({ user, onQuickLog
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-2xl font-bold text-white flex items-center space-x-2">
               <FileText className="h-6 w-6 text-emerald-400" />
               <span>Legal Document Drafting Suite</span>
             </h2>
-            {provider && (
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border ${
-                provider === 'openai' 
+            {metadata && (
+              <span className={`inline-flex items-center space-x-1 text-[10px] px-2.5 py-1 rounded-full font-mono font-semibold border ${
+                metadata.provider === 'openai' 
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
                   : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
               }`}>
-                {provider === 'openai' ? '✨ OpenAI GPT-4o-mini' : '📄 Legal Template Engine'}
+                <Cpu className="h-3 w-3" />
+                <span>
+                  {metadata.provider === 'openai' ? `OpenAI (${metadata.model})` : `Template Engine (${metadata.model})`}
+                </span>
+                <span className="text-[9px] opacity-75">
+                  &bull; {metadata.grounded ? 'Grounded' : 'Unbounded'}
+                </span>
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400">Generate structured, court-ready legal drafts with OpenAI AI models and custom legal parameters.</p>
+          <p className="text-xs text-slate-400">Generate structured, court-ready legal drafts with OpenAI models and custom parameters.</p>
         </div>
 
         <div className="inline-flex p-1 rounded-xl bg-slate-900 border border-slate-800">
@@ -126,7 +131,7 @@ export const DraftingModule: React.FC<DraftingModuleProps> = ({ user, onQuickLog
             {isDrafting ? (
               <>
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                <span>Synthesizing Legal Terms via OpenAI...</span>
+                <span>Synthesizing Legal Terms via AI...</span>
               </>
             ) : (
               <>
