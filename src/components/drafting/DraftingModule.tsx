@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Sliders, RefreshCw, Sparkles, AlertCircle } from 'lucide-react';
+import { FileText, Sliders, RefreshCw, Sparkles, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
 import { NdaForm } from './NdaForm';
 import { NoticeForm } from './NoticeForm';
 import { DraftPreview } from './DraftPreview';
@@ -24,6 +24,8 @@ export const DraftingModule: React.FC<DraftingModuleProps> = ({ user, onQuickLog
     setGeneratedDraft,
     copiedDraft,
     draftError,
+    provider,
+    toastMessage,
     handleGenerateDraft,
     handleExportPDF,
     handleCopyDraft,
@@ -38,14 +40,33 @@ export const DraftingModule: React.FC<DraftingModuleProps> = ({ user, onQuickLog
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Toast Notification Popup */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-slate-900 border border-emerald-500/40 text-emerald-300 text-xs shadow-2xl flex items-center space-x-2 animate-bounce">
+          <CheckCircle className="h-4 w-4 text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
-          <h2 className="text-2xl font-bold text-white flex items-center space-x-2">
-            <FileText className="h-6 w-6 text-emerald-400" />
-            <span>Legal Document Drafting Suite</span>
-          </h2>
-          <p className="text-xs text-slate-400">Generate structured, court-ready legal drafts with custom parameters and instant PDF export.</p>
+          <div className="flex items-center space-x-3">
+            <h2 className="text-2xl font-bold text-white flex items-center space-x-2">
+              <FileText className="h-6 w-6 text-emerald-400" />
+              <span>Legal Document Drafting Suite</span>
+            </h2>
+            {provider && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border ${
+                provider === 'openai' 
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+              }`}>
+                {provider === 'openai' ? '✨ OpenAI GPT-4o-mini' : '📄 Legal Template Engine'}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400">Generate structured, court-ready legal drafts with OpenAI AI models and custom legal parameters.</p>
         </div>
 
         <div className="inline-flex p-1 rounded-xl bg-slate-900 border border-slate-800">
@@ -69,9 +90,18 @@ export const DraftingModule: React.FC<DraftingModuleProps> = ({ user, onQuickLog
       </div>
 
       {draftError && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
-          <AlertCircle className="h-4 w-4 flex-shrink-0 text-rose-400" />
-          <span>{draftError}</span>
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0 text-rose-400" />
+            <span>{draftError}</span>
+          </div>
+          <button
+            onClick={handleGenerate}
+            className="flex items-center space-x-1 px-3 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 transition-all text-xs font-semibold"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span>Retry</span>
+          </button>
         </div>
       )}
 
@@ -96,7 +126,7 @@ export const DraftingModule: React.FC<DraftingModuleProps> = ({ user, onQuickLog
             {isDrafting ? (
               <>
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                <span>Synthesizing Legal Terms...</span>
+                <span>Synthesizing Legal Terms via OpenAI...</span>
               </>
             ) : (
               <>

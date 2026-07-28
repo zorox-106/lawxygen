@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
-import { generateNDADraft, generateLegalNoticeDraft, NDADraftInput, LegalNoticeDraftInput } from '@/lib/drafter';
+import { generateOpenAILegalDraft } from '@/lib/openai';
 import { z } from 'zod';
 
 const DraftRequestSchema = z.object({
@@ -10,7 +10,6 @@ const DraftRequestSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // ✅ Fix: Verify authenticated session before allowing document drafting
     const user = await getAuthenticatedUser();
     if (!user) {
       return NextResponse.json(
@@ -24,24 +23,21 @@ export async function POST(req: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid payload schema: ' + parsed.error.issues[0].message },
+        { error: 'Invalid payload: ' + parsed.error.issues[0].message },
         { status: 400 }
       );
     }
 
     const { docType, inputs } = parsed.data;
-    let draftContent = '';
 
-    if (docType === 'NDA') {
-      draftContent = generateNDADraft(inputs as NDADraftInput);
-    } else if (docType === 'LEGAL_NOTICE') {
-      draftContent = generateLegalNoticeDraft(inputs as LegalNoticeDraftInput);
-    }
+    // Call OpenAI generator with automatic timeout and template fallback
+    const { content, provider } = await generateOpenAILegalDraft(docType, inputs as any);
 
     return NextResponse.json({
       success: true,
       docType,
-      draftContent,
+      draftContent: content,
+      provider,
       generatedAt: new Date().toISOString(),
     });
   } catch (error: any) {

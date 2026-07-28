@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { searchLegalCorpus } from '@/lib/corpus';
+import { generateOpenAIRAGSynthesis } from '@/lib/openai';
 import { z } from 'zod';
 
 const SearchRequestSchema = z.object({
@@ -10,7 +11,6 @@ const SearchRequestSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // ✅ Fix: Verify authenticated session before querying statutory legal corpus
     const user = await getAuthenticatedUser();
     if (!user) {
       return NextResponse.json(
@@ -30,13 +30,30 @@ export async function POST(req: NextRequest) {
     }
 
     const { query, category } = parsed.data;
-    const { results, citedSummary } = searchLegalCorpus(query, category);
+    const { results } = searchLegalCorpus(query, category);
+
+    // If zero matching chunks, return immediate zero-sources response
+    if (results.length === 0) {
+      return NextResponse.json({
+        success: true,
+        query,
+        count: 0,
+        citedSummary: "No relevant legal sources were found.",
+        provider: 'rule-engine',
+        results: [],
+      });
+    }
+
+    // Pass retrieved documents to OpenAI for grounded RAG synthesis
+    const docs = results.map(r => r.doc);
+    const { summary, provider } = await generateOpenAIRAGSynthesis(query, docs);
 
     return NextResponse.json({
       success: true,
       query,
       count: results.length,
-      citedSummary,
+      citedSummary: summary,
+      provider,
       results,
     });
   } catch (error: any) {
