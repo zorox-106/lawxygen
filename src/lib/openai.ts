@@ -13,8 +13,8 @@ export function getOpenAIClient(): OpenAI | null {
   if (!openaiClient) {
     openaiClient = new OpenAI({
       apiKey: apiKey.trim(),
-      timeout: 15000, // 15s request timeout
-      maxRetries: 2,
+      timeout: 8000, // 8s — safely under Vercel's 10s default, 30s with vercel.json extended timeout
+      maxRetries: 1,
     });
   }
 
