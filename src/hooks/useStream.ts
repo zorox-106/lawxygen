@@ -13,17 +13,26 @@ export function useStream() {
     setSec2SourcesJson(null);
     setStreamError('');
 
-    const fastApiBaseUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || 'http://localhost:8000';
-
     try {
-      const res = await fetch(`${fastApiBaseUrl}/research/query`, {
+      // Primary: Call serverless Next.js SSE streaming endpoint (works out-of-the-box on Vercel)
+      let res = await fetch('/api/section2/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: sec2Query })
       });
 
+      // Fallback: If local environment uses external FastAPI port 8000
       if (!res.ok) {
-        throw new Error(`FastAPI server error (${res.status}). Make sure Section 2 server is active at ${fastApiBaseUrl}`);
+        const fastApiBaseUrl = process.env.NEXT_PUBLIC_FASTAPI_URL || 'http://localhost:8000';
+        res = await fetch(`${fastApiBaseUrl}/research/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: sec2Query })
+        });
+      }
+
+      if (!res.ok) {
+        throw new Error(`Streaming API error (${res.status}). Failed to establish SSE stream connection.`);
       }
 
       const reader = res.body?.getReader();
@@ -54,7 +63,7 @@ export function useStream() {
       }
     } catch (err: any) {
       setStreamError(err.message);
-      setSec2StreamText(`⚠️ Streaming Note: ${err.message}\n\nTo run Section 2 server standalone:\n$ cd section2_rag && ./venv/bin/uvicorn main:app --port 8000`);
+      setSec2StreamText(`⚠️ Streaming Note: ${err.message}`);
     } finally {
       setIsStreamingSec2(false);
     }
